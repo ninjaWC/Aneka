@@ -44,9 +44,9 @@
     z-index: 1000;
 
     // 2. Эффект матового стекла
-    background: rgba(255, 255, 255, 0.7); /* белый с прозрачностью 70% */
-    backdrop-filter: blur(10px);         /* основная магия размытия */
-    -webkit-backdrop-filter: blur(10px); /* поддержка для Safari */
+    background: rgba(126, 204, 245, 0.644); /* белый с прозрачностью 70% */
+    backdrop-filter: blur(8px);         /* основная магия размытия */
+    -webkit-backdrop-filter: blur(8px); /* поддержка для Safari */
     
     // 3. Добавим тонкую границу, чтобы отделить от контента
     border-bottom: 1px solid rgba(0, 0, 0, 0.05);

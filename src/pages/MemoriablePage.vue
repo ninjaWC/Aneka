@@ -94,6 +94,7 @@ const addNewDay = () => {
   padding: 40px 20px;
   background-color: #9AD1D4;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
+  border-radius: 25px;
 
   &__content {
     display: flex;
