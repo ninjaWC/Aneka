@@ -1,178 +1,158 @@
 <script setup>
 import { ref, watch, onMounted, computed } from 'vue'
+import { supabase } from '@/supabase'; // Убедись, что путь до файла инициализации правильный
 
-// Список членов семьи для вкладок
+// Настройки вкладок семьи
 const familyMembers = [
   { key: 'my', label: 'Мой' },
   { key: 'mom', label: 'Мама' },
   { key: 'dad', label: 'Папа' },
   { key: 'sister', label: 'Сестренка' },
-  { key: 'grandma', label: 'Бабушка' },
-]
-
-// Активная вкладка по умолчанию
-const activeTab = ref('my')
-
-// Начальные данные для каждого члена семьи
-const defaultWishlists = {
-  my: [
-    {
-      id: 1,
-      title: 'Беспроводные наушники AirPods Max',
-      image:
-        'https://images.unsplash.com/photo-1546435770-a3e426bf472b?auto=format&fit=crop&w=600&q=80',
-      link: 'https://apple.com',
-    },
-    {
-      id: 2,
-      title: 'Пленочный фотоаппарат Fujifilm',
-      image:
-        'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=600&q=80',
-      link: 'https://google.com',
-    },
-  ],
-  mom: [
-    {
-      id: 1,
-      title: 'Шелковый платок',
-      image:
-        'https://images.unsplash.com/photo-1606760227091-3dd870d97f1d?auto=format&fit=crop&w=600&q=80',
-      link: '#',
-    },
-  ],
-  dad: [
-    {
-      id: 1,
-      title: 'Кожаный кошелек',
-      image:
-        'https://images.unsplash.com/photo-1627123424574-724758594e93?auto=format&fit=crop&w=600&q=80',
-      link: '#',
-    },
-  ],
-  sister: [
-    {
-      id: 1,
-      title: 'Набор косметики',
-      image:
-        'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=600&q=80',
-      link: '#',
-    },
-  ],
-  grandma: [
-    {
-      id: 1,
-      title: 'Уютный плед',
-      image:
-        'https://images.unsplash.com/photo-1584100936595-c0654b55a2e2?auto=format&fit=crop&w=600&q=80',
-      link: '#',
-    },
-  ],
-}
-
-// Хранилище всех вишлистов
-const wishlistsData = ref(defaultWishlists)
-
-// Загрузка из localStorage при монтировании
-onMounted(() => {
-  const savedData = localStorage.getItem('app_family_wishlists')
-  if (savedData) {
-    try {
-      wishlistsData.value = JSON.parse(savedData)
-    } catch (e) {
-      console.error('Ошибка при чтении семейного вишлиста из localStorage', e)
-    }
-  }
-})
-
-// Автосохранение при любых изменениях
-watch(
-  wishlistsData,
-  (newVal) => {
-    localStorage.setItem('app_family_wishlists', JSON.stringify(newVal))
-  },
-  { deep: true },
-)
-
-// Текущий список на основе выбранной вкладки
-const currentWishlist = computed(() => {
-  return wishlistsData.value[activeTab.value] || []
-})
-
-// Состояния модального окна
-const isModalOpen = ref(false)
-const isEditing = ref(false)
-const editingId = ref(null)
+  { key: 'grandma', label: 'Бабушка' }
+];
 
 const form = ref({
   title: '',
+  description: '',
+  url: '',
   image: '',
-  link: '',
-})
+  is_bought: false
+});
 
-// Открытие модалки для добавления
-const openAddModal = () => {
-  isEditing.value = false
-  editingId.value = null
-  form.value = { title: '', image: '', link: '' }
-  isModalOpen.value = true
-}
+const activeTab = ref('my');
+const allItems = ref([]);
+const isLoading = ref(true);
 
-// Открытие модалки для редактирования
-const openEditModal = (item, event) => {
-  if (event.target.closest('.wishlist-card__link-btn')) return
+// 1. Чтение данных
+const fetchWishlist = async () => {
+  isLoading.value = true;
+  const { data, error } = await supabase
+    .from('WishList')
+    .select('*')
+    .order('id', { ascending: true });
 
-  isEditing.value = true
-  editingId.value = item.id
-  form.value = {
-    title: item.title,
-    image: item.image,
-    link: item.link,
+  if (error) {
+    console.error('Ошибка при загрузке вишлиста:', error.message);
+  } else {
+    allItems.value = data;
+    console.log(data)
   }
-  isModalOpen.value = true
-}
+  isLoading.value = false;
+};
+
+onMounted(() => {
+  fetchWishlist();
+});
+
+// Фильтрация желаний для активной вкладки
+const currentWishlist = computed(() => {
+  return allItems.value.filter(item => item.family_member === activeTab.value);
+});
+
+// Состояния формы
+const isModalOpen = ref(false);
+const isEditing = ref(false);
+const editingId = ref(null);
+
+
+const openAddModal = () => {
+  isEditing.value = false;
+  editingId.value = null;
+  form.value = { title: '', description: '', url: '', image: '', is_bought: false };
+  isModalOpen.value = true;
+};
+
+const openEditModal = (item, event) => {
+  if (event.target.closest('.wishlist-card__link-btn') || event.target.closest('.bought-toggle')) return;
+
+  isEditing.value = true;
+  editingId.value = item.id;
+  form.value = { 
+    title: item.title, 
+    description: item.description, 
+    url: item.url, 
+    image: item.image,
+    is_bought: item.is_bought 
+  };
+  isModalOpen.value = true;
+};
 
 const closeModal = () => {
-  isModalOpen.value = false
-}
+  isModalOpen.value = false;
+};
 
-// Сохранение (добавление или обновление) для активного человека
-const handleSave = () => {
-  if (!form.value.title) return
-
-  const list = wishlistsData.value[activeTab.value]
+// 2. Сохранение (Create / Update)
+const handleSave = async () => {
+  if (!form.value.title) return;
 
   if (isEditing.value) {
-    const index = list.findIndex((w) => w.id === editingId.value)
-    if (index !== -1) {
-      list[index] = {
-        id: editingId.value,
+    const { error } = await supabase
+      .from('WishList')
+      .update({
         title: form.value.title,
-        image: form.value.image || 'https://via.placeholder.com/400x500',
-        link: form.value.link || '#',
+        description: form.value.description,
+        url: form.value.url,
+        image: form.value.image,
+        is_bought: form.value.is_bought
+      })
+      .eq('id', editingId.value);
+
+    if (!error) {
+      const index = allItems.value.findIndex(w => w.id === editingId.value);
+      if (index !== -1) {
+        allItems.value[index] = { ...allItems.value[index], ...form.value };
       }
     }
   } else {
-    const newId = list.length > 0 ? Math.max(...list.map((w) => w.id)) + 1 : 1
-    list.push({
-      id: newId,
-      title: form.value.title,
-      image: form.value.image || 'https://via.placeholder.com/400x500',
-      link: form.value.link || '#',
-    })
+    const { data, error } = await supabase
+      .from('WishList')
+      .insert([{
+        family_member: activeTab.value, // Привязываем к текущей вкладке
+        title: form.value.title,
+        description: form.value.description,
+        url: form.value.url,
+        image: form.value.image,
+        is_bought: form.value.is_bought
+      }])
+      .select();
+
+    if (!error && data) {
+      allItems.value.push(data[0]);
+    }
   }
 
-  closeModal()
-}
+  closeModal();
+};
 
-// Удаление карточки из текущего списка
-const handleDelete = () => {
-  if (editingId.value) {
-    wishlistsData.value[activeTab.value] = wishlistsData.value[activeTab.value].filter(
-      (w) => w.id !== editingId.value,
-    )
-    closeModal()
+// 3. Удаление
+const handleDelete = async () => {
+  if (!editingId.value) return;
+
+  const { error } = await supabase
+    .from('WishList')
+    .delete()
+    .eq('id', editingId.value);
+
+  if (!error) {
+    allItems.value = allItems.value.filter(w => w.id !== editingId.value);
+    closeModal();
   }
-}
+};
+
+// Переключение статуса "Куплено"
+const toggleBought = async (item) => {
+  const newValue = !item.is_bought;
+  const { error } = await supabase
+    .from('WishList')
+    .update({ is_bought: newValue })
+    .eq('id', item.id);
+  
+  if (!error) {
+    item.is_bought = newValue;
+  }
+};
+
+
 </script>
 
 <template>
@@ -230,7 +210,6 @@ const handleDelete = () => {
         </a>
 
         <div class="wishlist-card__overlay-content">
-          <span class="wishlist-card__id">№ {{ item.id }}</span>
           <h4 class="wishlist-card__title-text">{{ item.title }}</h4>
         </div>
       </div>
@@ -309,7 +288,7 @@ const handleDelete = () => {
     -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', sans-serif;
   border-radius: 25px;
   margin-top: 0; // Убираем лишний отступ сверху
-
+  // width: 100%;
   &__title {
     margin: 20px 0 15px 0; // Чуть уменьшаем отступ снизу у заголовка
   }

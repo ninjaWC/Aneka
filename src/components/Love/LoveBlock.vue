@@ -46,7 +46,6 @@ function getRandomReason() {
 let timer = null;
 
 onMounted(() => {
-  console.log('LoveBlock component mounted');
   getRandomReason();
   // Автоматическая смена каждые 6 секунд
   // timer = setInterval(getRandomReason, 6000);

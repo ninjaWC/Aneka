@@ -1,145 +1,234 @@
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, onMounted } from 'vue';
+import { supabase } from '@/supabase';
 
-// Импорт твоих реальных фотографий
-import photo1 from '@/assets/images/photo-1.jpg' // Фото с объятиями возле PAPA
-import photo2 from '@/assets/images/photo-2.jpg' // Полароиды с кофе
-import photo3 from '@/assets/images/photo-3.jpg' // Тени на стене
+const memories = ref([]);
+const isLoading = ref(true);
 
-// Начальные данные по умолчанию, если в localStorage еще ничего нет
-const defaultDays = [
-  {
-    id: 1,
-    date: '12 Октября, 2025',
-    title: 'Тот самый теплый вечер вместе',
-    image: photo1,
-    song: 'Lana Del Rey — Video Games',
-  },
-  {
-    id: 2,
-    date: '15 Декабря, 2025',
-    title: 'Кофе, уют и наши моменты',
-    image: photo2,
-    song: 'The Neighbourhood — Sweater Weather',
-  },
-  {
-    id: 3,
-    date: '20 Февраля, 2026',
-    title: 'Наши тени гуляют по городу',
-    image: photo3,
-    song: 'CAS — Apocalypse',
-  },
-]
+// Состояния модалки и формы
+const isModalOpen = ref(false);
+const isEditing = ref(false);
+const editingId = ref(null);
 
-// Реактивный массив карточек (пробуем загрузить из localStorage)
-const memorableDays = ref(defaultDays)
-
-onMounted(() => {
-  const savedDays = localStorage.getItem('memorable_days')
-  if (savedDays) {
-    try {
-      memorableDays.value = JSON.parse(savedDays)
-    } catch (e) {
-      console.error('Ошибка при чтении из localStorage', e)
-    }
-  }
-})
-
-// Автоматически сохраняем в localStorage при любых изменениях
-watch(
-  memorableDays,
-  (newVal) => {
-    localStorage.setItem('memorable_days', JSON.stringify(newVal))
-  },
-  { deep: true },
-)
-
-// Состояния модального окна (добавление / редактирование)
-const isModalOpen = ref(false)
-const isEditing = ref(false)
-const editingId = ref(null)
+const fileInput = ref(null);
+const selectedFile = ref(null);
+const previewImage = ref('');
 
 const form = ref({
   date: '',
   title: '',
-  image: '',
   song: '',
-})
+  photo: '' // Здесь хранится URL картинки из Supabase Storage
+});
 
-// Состояние для увеличения картинки (лайтбокс)
-const activeImage = ref(null)
+// 1. Получение всех воспоминаний
+const fetchMemories = async () => {
+  isLoading.value = true;
+  const { data, error } = await supabase
+    .from('MemorableDays')
+    .select('*')
+    .order('id', { ascending: true });
+  if (error) {
+    console.error('Ошибка при загрузке воспоминаний:', error.message);
+    alert('что-то пошло не так, напиши мне жаным моя');
+  } else {
+    memories.value = data;
+  }
+  isLoading.value = false;
+  memories.value = data;
+  return data;
+};
+onMounted(() => {
+  fetchMemories();
+});
 
-// Открытие модалки для добавления
+// Открытие модалки для создания
 const openAddModal = () => {
-  isEditing.value = false
-  editingId.value = null
-  form.value = { date: '', title: '', image: '', song: '' }
-  isModalOpen.value = true
-}
+  isEditing.value = false;
+  editingId.value = null;
+  resetForm();
+  isModalOpen.value = true;
+};
 
 // Открытие модалки для редактирования
-const openEditModal = (day, event) => {
-  event.stopPropagation() // Чтобы не срабатывал клик по карточке/фото
-  isEditing.value = true
-  editingId.value = day.id
+const openEditModal = (item) => {
+  isEditing.value = true;
+  editingId.value = item.id;
   form.value = {
-    date: day.date,
-    title: day.title,
-    image: day.image,
-    song: day.song,
+    date: item.date,
+    title: item.title,
+    song: item.song,
+    photo: item.photo
+  };
+  previewImage.value = item.photo; // Показываем текущую картинку в превью
+  selectedFile.value = null;
+  isModalOpen.value = true;
+};
+
+//Сжимаем фоточки перед пушем в БД
+const compressImage = (file, maxWidth = 1200, quality = 0.8) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        // Пропорционально уменьшаем, если картинка шире лимита
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Конвертируем в Blob с заданным качеством (0.8 = 80%)
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              reject(new Error('Ошибка сжатия изображения'));
+              return;
+            }
+            // Создаем новый файл с тем же именем, но сжатый
+            const compressedFile = new File([blob], file.name, {
+              type: 'image/jpeg',
+              lastModified: Date.now(),
+            });
+            resolve(compressedFile);
+          },
+          'image/jpeg',
+          quality
+        );
+      };
+      
+      img.onerror = (error) => reject(error);
+    };
+    
+    reader.onerror = (error) => reject(error);
+  });
+};
+
+
+// Выбор нового файла
+const handleFileSelect = async (event) => {
+  const file = event.target.files[0];
+  if (file) {
+    try {
+      const compressedFile = await compressImage(file, 1200, 0.8);
+      selectedFile.value = compressedFile;
+      previewImage.value = URL.createObjectURL(compressedFile);
+    } catch (err) {
+      console.error('Не удалось сжать картинку:', err);
+      // Если что-то пошло не так, фоллбечим на оригинал
+      selectedFile.value = file;
+      previewImage.value = URL.createObjectURL(file);
+    }
   }
-  isModalOpen.value = true
-}
+};
+
+
+// Полный сброс формы
+const resetForm = () => {
+  form.value = { date: '', title: '', song: '', photo: '' };
+  selectedFile.value = null;
+  previewImage.value = '';
+  if (fileInput.value) fileInput.value.value = '';
+};
 
 const closeModal = () => {
-  isModalOpen.value = false
-}
+  resetForm();
+  isModalOpen.value = false;
+};
 
-// Сохранение (добавление или обновление)
-const handleSave = () => {
-  if (!form.value.title || !form.value.date) return
+// 2. Сохранение (Create / Update)
+const handleSave = async () => {
+  if (!form.value.title) return;
 
-  if (isEditing.value) {
-    // Редактирование существующей
-    const index = memorableDays.value.findIndex((d) => d.id === editingId.value)
-    if (index !== -1) {
-      memorableDays.value[index] = {
-        id: editingId.value,
-        date: form.value.date,
-        title: form.value.title,
-        image: form.value.image || 'https://via.placeholder.com/400x300',
-        song: form.value.song || 'Любимая песня',
-      }
+  let photoUrl = form.value.photo;
+  console.log(photoUrl, 'handleSave Function');
+  let uploadedFileName = null; // Будем хранить имя файла на случай отката
+
+  // 1. Если выбрали файл — заливаем в Storage
+  if (selectedFile.value) {
+    const file = selectedFile.value;
+    uploadedFileName = `${Date.now()}_${file.name}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('memories')
+      .upload(uploadedFileName, file);
+
+    if (uploadError) {
+      console.error('Ошибка загрузки фото:', uploadError.message);
+      return;
     }
-  } else {
-    // Добавление новой
-    memorableDays.value.push({
-      id: Date.now(),
-      date: form.value.date,
+
+    const { data: publicURLData } = supabase.storage
+      .from('memories')
+      .getPublicUrl(uploadedFileName);
+
+    photoUrl = publicURLData.publicUrl;
+  }
+
+  // 2. Пытаемся сохранить запись в БД
+  const { data, error } = await supabase
+    .from('MemorableDays')
+    .insert([{
       title: form.value.title,
-      image: form.value.image || 'https://via.placeholder.com/400x300',
-      song: form.value.song || 'Любимая песня',
-    })
+      date: form.value.date,
+      description: 'Пока эти описание не включено в UI',
+      photo: photoUrl,
+      song: form.value.song
+    }])
+    .select();
+
+  // 3. ЕСЛИ база выдала ошибку — откатываем загрузку файла (удаляем из бакета)
+  if (error) {
+    console.error('Ошибка при создании записи в БД:', error.message);
+    
+    if (uploadedFileName) {
+      await supabase.storage
+        .from('memories')
+        .remove([uploadedFileName]);
+      console.log('Файл успешно удален из хранилища из-за ошибки в БД');
+    }
+    return;
   }
 
-  closeModal()
-}
-
-// Удаление карточки
-const handleDelete = () => {
-  if (editingId.value) {
-    memorableDays.value = memorableDays.value.filter((d) => d.id !== editingId.value)
-    closeModal()
+  // Если всё успешно — добавляем в стейт и закрываем модалку
+  if (data) {
+    memories.value.push(data[0]);
+    closeModal();
   }
-}
+};
 
-const openImageZoom = (imgUrl) => {
-  activeImage.value = imgUrl
-}
+// 3. Удаление
+const handleDelete = async () => {
+  if (!editingId.value) return;
 
-const closeImageZoom = () => {
-  activeImage.value = null
-}
+  const { error } = await supabase
+    .from('MemorableDays')
+    .delete()
+    .eq('id', editingId.value);
+
+  if (!error) {
+    memories.value = memories.value.filter(m => m.id !== editingId.value);
+    closeModal();
+  } else {
+    console.error('Ошибка при удалении:', error.message);
+  }
+};
+
+
 </script>
 
 <template>
@@ -148,7 +237,7 @@ const closeImageZoom = () => {
 
     <div class="memorable-days__content">
       <!-- Карточки памятных дней -->
-      <div v-for="day in memorableDays" :key="day.id" class="memorable-days__card">
+      <div v-for="day in memories" :key="day.id" class="memorable-days__card">
         <div class="card-header-actions">
           <div class="memorable-days__card-date">{{ day.date }}</div>
           <!-- Кнопка редактирования карточки -->
@@ -220,8 +309,8 @@ const closeImageZoom = () => {
           </h3>
 
           <div class="form-group">
-            <label>Дата (например: 12 Октября, 2025)</label>
-            <input type="text" v-model="form.date" placeholder="Введите дату..." />
+            <label>Дата</label>
+            <input type="date" v-model="form.date" placeholder="Введите дату..." />
           </div>
 
           <div class="form-group">
@@ -230,9 +319,25 @@ const closeImageZoom = () => {
           </div>
 
           <div class="form-group">
-            <label>Ссылка на фото (URL или путь)</label>
-            <input type="text" v-model="form.image" placeholder="https://..." />
-          </div>
+    <label>Фотография воспоминания</label>
+    
+    <!-- Скрытый инпут для файлов -->
+    <input 
+      type="file" 
+      ref="fileInput" 
+      accept="image/*" 
+      style="display: none" 
+      @change="handleFileSelect"
+    />
+
+    <!-- Кастомная кнопка выбора / Превью -->
+    <div class="photo-picker" @click="$refs.fileInput.click()">
+      <img v-if="previewImage" :src="previewImage" class="photo-preview" />
+      <div v-else class="photo-placeholder">
+        <span>📷 Нажми, чтобы выбрать фото</span>
+      </div>
+    </div>
+  </div>
 
           <div class="form-group">
             <label>Песня-ассоциация</label>
@@ -282,6 +387,7 @@ const closeImageZoom = () => {
   font-family:
     -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', sans-serif;
   border-radius: 25px;
+  // width: 100%;
 
   &__content {
     display: flex;
@@ -536,6 +642,35 @@ const closeImageZoom = () => {
     }
   }
 }
+/* Обертка для загрузки/превью внутри модалки */
+.photo-picker {
+  width: 100%;
+  height: 160px; /* Фиксированная зона под фото в модалке */
+  border: 2px dashed rgba(255, 255, 255, 0.3);
+  border-radius: 12px;
+  cursor: pointer;
+  overflow: hidden; /* Жестко режет всё, что вылазит за рамки модалки */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  transition: all 0.3s ease;
+}
+
+/* Сама картинка превью в модалке */
+.photo-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* Аккуратно вписывает фото в блок без разрыва верстки */
+  display: block;
+}
+
+.photo-placeholder {
+  text-align: center;
+  color: #fff;
+  font-size: 14px;
+}
+
 
 .modal-actions {
   display: flex;
@@ -637,3 +772,4 @@ const closeImageZoom = () => {
   opacity: 0;
 }
 </style>
+
