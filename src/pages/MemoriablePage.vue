@@ -14,6 +14,20 @@ const fileInput = ref(null);
 const selectedFile = ref(null);
 const previewImage = ref('');
 
+// Состояние для зума картинки
+const isZoomOpen = ref(false);
+const activeZoomImage = ref('');
+const openImageZoom = (photoUrl) => {
+  if (!photoUrl) return;
+  activeZoomImage.value = photoUrl;
+  isZoomOpen.value = true;
+};
+const closeImageZoom = () => {
+  isZoomOpen.value = false;
+  activeZoomImage.value = '';
+};
+
+
 const form = ref({
   date: '',
   title: '',
@@ -36,6 +50,7 @@ const fetchMemories = async () => {
   }
   isLoading.value = false;
   memories.value = data;
+  console.log('Fetched memories:', memories.value);
   return data;
 };
 onMounted(() => {
@@ -155,7 +170,6 @@ const handleSave = async () => {
   if (!form.value.title) return;
 
   let photoUrl = form.value.photo;
-  console.log(photoUrl, 'handleSave Function');
   let uploadedFileName = null; // Будем хранить имя файла на случай отката
 
   // 1. Если выбрали файл — заливаем в Storage
@@ -228,7 +242,6 @@ const handleDelete = async () => {
   }
 };
 
-
 </script>
 
 <template>
@@ -259,14 +272,16 @@ const handleDelete = async () => {
         </div>
 
         <!-- Клик по фото открывает увеличение -->
-        <div class="memorable-days__card-photo" @click="openImageZoom(day.image)">
-          <img :src="day.image || 'https://via.placeholder.com/400x300'" :alt="day.title" />
+        <div class="memorable-days__card-photo" @click="openImageZoom(day.photo)">
+          <img :src="day.photo" :alt="day.title" />
         </div>
-
+        <!-- модальное окно открытой фотографии -->
+         <!-- ТУТ НАДО ПЕРЕСМОТРЕТЬ МЕСТО КУДА ЕГО СТОИТ ВПИХНУТЬ, ТУТ НЕ ВАРИАНТ, ВЕРСТКА ЛОМАЕТСЯ И МОДАЛКА В РАМКАХ КАРТОЧКИ ОТРКЫВАЕТСЯ -->
+        
         <div class="memorable-days__card-title">{{ day.title }}</div>
 
         <!-- Мини-плеер для песни в стиле Apple Music -->
-        <div class="memorable-days__song-player">
+        <!-- <div class="memorable-days__song-player">
           <div class="song-icon">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
               <path d="M8 5v14l11-7z" />
@@ -276,7 +291,7 @@ const handleDelete = async () => {
             <span class="song-name">{{ day.song }}</span>
             <span class="song-label">Ассоциация дня</span>
           </div>
-        </div>
+        </div> -->
       </div>
 
       <!-- Кнопка добавления нового события -->
@@ -299,7 +314,12 @@ const handleDelete = async () => {
         <div class="memorable-days__add-new__title">Еще памятное событие!</div>
       </div>
     </div>
-
+    <div v-if="isZoomOpen" class="image-zoom-modal" @click="closeImageZoom">
+      <div class="image-zoom-content" @click.stop>
+        <img :src="activeZoomImage" alt="Увеличенное воспоминание" />
+        <button class="image-zoom-close" @click="closeImageZoom">✕</button>
+      </div>
+    </div>
     <!-- Модальное окно добавления/редактирования в стиле Apple Sheet -->
     <Transition name="fade">
       <div v-if="isModalOpen" class="modal-overlay" @click.self="closeModal">
@@ -771,5 +791,55 @@ const handleDelete = async () => {
 .fade-leave-to {
   opacity: 0;
 }
+
+
+// РЕФАКТОРИНГ: Модалка увеличенной картинки
+
+.image-zoom-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(5px);
+  cursor: pointer;
+}
+
+.image-zoom-content {
+  position: relative;
+  max-width: 90vw;
+  max-height: 90vh;
+}
+
+.image-zoom-content img {
+  width: 100%;
+  height: 100%;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.image-zoom-close {
+  position: absolute;
+  top: -15px;
+  right: -15px;
+  background: #fff;
+  color: #000;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+
 </style>
 
